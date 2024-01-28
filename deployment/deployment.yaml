@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: webhook-server
+    namespace: webhook-namespace
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            app: webhook-server
+    template:
+        metadata:
+            labels:
+                app: webhook-server
+        spec:
+            containers:
+            - name: webhook-server
+              image: k8s-namespace-mutator:0.0.1
+              ports:
+              - containerPort: 5000
+              imagePullPolicy: Always
+              volumeMounts:
+              - name: webhook-tls-certs
+                mountPath: /run/secrets/tls
+                readOnly: true
+            volumes:
+            - name: webhook-tls-certs
+              secret:
+                secretName: webhook-server-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: webhook-server
+    namespace: webhook-namespace
+spec:
+    selector:
+        app: webhook-server
+    ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: tenant-namespace-label-mutator
+webhooks:
+  - name: webhook-server.webhook-namespace.svc
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      service:
+        name: webhook-server
+        namespace: webhook-namespace
+        path: "/mutate"
+        port: 5000
+        caBundle: LS0tLS1CRUd
+    rules:
+      - operations: [ "CREATE" ]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["namespaces"]
